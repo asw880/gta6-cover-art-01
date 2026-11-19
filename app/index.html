@@ -10,7 +10,7 @@
 <main class="app">
   <section class="controls" aria-label="Cover editor">
     <h1>Vice City Cover Studio</h1>
-    <p class="tagline">Your photos, painted into a Vice City poster. Pick photos, choose a layout and grade, write the caption, export the PNG.</p>
+    <p class="tagline">Your photos, painted into a Vice City poster. Pick a Look for a one-click poster, or tune the layout and grade yourself, write the caption, export the PNG.</p>
 
     <fieldset>
       <legend>1 · Photos</legend>
@@ -22,18 +22,28 @@
     </fieldset>
 
     <fieldset>
-      <legend>2 · Layout</legend>
+      <legend>2 · Looks — one click</legend>
+      <div id="looks" class="picks looks" role="group" aria-label="Looks"></div>
+      <p class="hint">A Look sets the layout, grade and title treatment together. Tweak anything after.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>3 · Layout</legend>
       <div id="layouts" class="picks" role="group" aria-label="Layout"></div>
     </fieldset>
 
     <fieldset>
-      <legend>3 · Colour grade</legend>
+      <legend>4 · Colour grade</legend>
       <div id="grades" class="picks" role="group" aria-label="Colour grade"></div>
     </fieldset>
 
     <fieldset>
-      <legend>4 · Caption</legend>
+      <legend>5 · Caption</legend>
       <label>Title <input id="title" type="text" maxlength="24" value="VICE CITY"></label>
+      <label class="check"><input id="stacked" type="checkbox" checked> Stack the title on two lines</label>
+      <label>Letter spacing <span id="trackingVal">2px</span>
+        <input id="tracking" type="range" min="-1" max="10" step="1" value="2">
+      </label>
       <label>Subtitle (script line) <input id="subtitle" type="text" maxlength="48" value="one last sunset heist"></label>
       <label>Badge ribbon <input id="badge" type="text" maxlength="18" value="VICE CITY"></label>
       <label>Heat meter
@@ -49,7 +59,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>5 · Selected panel</legend>
+      <legend>6 · Selected panel</legend>
       <p id="panelLabel" class="hint">Panel 1</p>
       <label>Photo in this panel
         <select id="panelPhoto">
@@ -72,7 +82,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>6 · Export size</legend>
+      <legend>7 · Export size</legend>
       <div id="sizes" class="picks" role="group" aria-label="Export size"></div>
       <button id="export" type="button" class="primary">Export PNG</button>
       <div class="row">

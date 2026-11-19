@@ -4,9 +4,11 @@
 // the judge reads, using the vendored make.fun library. The app itself is
 // plain static files a desktop browser loads offline (app/index.html and its
 // ES modules, Anton + Pacifico vendored under the OFL, no network request):
-// a multi-panel cover maker — six layouts, five colour grades, drag-to-crop
-// panels, gradient display lettering and one-click PNG export in 1080 x 1080,
-// 1080 x 1350 and 1920 x 1080. Its two sample photos (app/samples/) were made
+// a multi-panel cover maker — six layouts, five colour grades, one-click
+// Looks, a painted sunset sky with slatted sun and palm silhouettes behind
+// the panels, stacked gradient display lettering with a hard drop shadow,
+// drag-to-crop panels, and one-click PNG export in 1080 x 1080,
+// 1080 x 1350 and 1920 x 1080. Its three sample photos (app/samples/) were made
 // for make.fun with an image model and are free to use.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.

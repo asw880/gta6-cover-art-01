@@ -46,6 +46,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .picks { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick { padding: 7px 10px; font-size: 13px; border-radius: 20px; }
 .pick.active { background: #ff2e88; color: #fff; }
+.looks .pick { font-size: 14px; padding: 10px 16px; border: 1px solid #ff2e88; background: linear-gradient(135deg, rgba(255,46,136,0.18), rgba(255,122,24,0.18)); }
+.looks .pick.active { background: linear-gradient(90deg, #ff2e88, #ff7a18); border-color: transparent; }
 .row { display: flex; gap: 8px; }
 .row button { flex: 1; }
 #status { margin: 0; color: #7df9c8; min-height: 1.2em; }

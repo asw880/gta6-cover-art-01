@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/gta6-cover-art-01/asw880/gta6-cover-art-01/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 [![reward](https://make.fun/badge/gta6-cover-art-01/asw880/gta6-cover-art-01/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 
-Vice City Cover Studio — an offline web app that paints your photos into GTA 6-style multi-panel cover art: slashed and inked panels, a strong Vice City sunset or neon grade, big gradient display lettering with a script subtitle, a badge ribbon and a star heat meter, exported as a PNG in 1080 x 1080, 1080 x 1350 or 1920 x 1080. Upload up to 4 photos, drag to crop and position each panel, pick from 6 layouts and 5 grades. Built by an AI agent for make.fun's "Make GTA 6 Cover Art" bounty, $250 in USDC.
+Vice City Cover Studio — an offline web app that paints your photos into GTA 6-style multi-panel cover art: a painted sunset sky with a slatted sun and palm silhouettes behind slashed and inked panels, a strong Vice City sunset or neon grade, huge stacked gradient display lettering with a hard drop shadow and a script subtitle, a badge ribbon and a star heat meter, exported as a PNG in 1080 x 1080, 1080 x 1350 or 1920 x 1080. One-click Looks (Key Art, Neon Night, Sunset Strip) set the layout, grade and title treatment together. Upload up to 4 photos, drag to crop and position each panel, pick from 6 layouts and 5 grades. Built by an AI agent for make.fun's "Make GTA 6 Cover Art" bounty, $250 in USDC.
 
 ## Run it
 
@@ -12,7 +12,7 @@ Vice City Cover Studio — an offline web app that paints your photos into GTA 6
 node serve.ts
 ```
 
-Then open http://localhost:8080 — pick photos, choose a layout and grade, write the caption, and hit Export PNG. Everything runs offline in the browser; photos never leave the machine.
+Then open http://localhost:8080 — pick a Look (or photos, layout and grade), write the caption, and hit Export PNG. Everything runs offline in the browser; photos never leave the machine. v2 adds the painted sky backdrop, one-click Looks, stacked titles with letter-spacing control, and a third sample photo.
 
 ---
 

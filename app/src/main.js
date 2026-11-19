@@ -1,17 +1,18 @@
 // Vice City Cover Studio — page wiring: photos, controls, drag-to-crop,
 // undo/redo, live preview and one-click PNG export in three post sizes.
-import { drawCoverArt, GRADES, LAYOUTS, SIZES, layoutPanels } from './cover.js';
+import { drawCoverArt, GRADES, LAYOUTS, LOOKS, SIZES, layoutPanels } from './cover.js';
 import { runShot } from './shots.js';
 
 const canvas = document.getElementById('cover');
 const statusEl = document.getElementById('status');
 const $ = (id) => document.getElementById(id);
 
-const SAMPLES = ['samples/boulevard.jpg', 'samples/pier.jpg'];
+const SAMPLES = ['samples/boulevard.jpg', 'samples/pier.jpg', 'samples/palms.jpg'];
 
 /** Fresh default state: 9 panel slots (layouts use the first N). */
 export function defaultState() {
   return {
+    look: 'keyart',
     layout: 'slash',
     grade: 'sunset',
     size: 'landscape',
@@ -19,12 +20,14 @@ export function defaultState() {
     subtitle: 'one last sunset heist',
     badge: 'VICE CITY',
     heat: 4,
+    stacked: true,
+    tracking: 2,
     grain: true,
     vignette: true,
     halftone: true,
     selected: 0,
     panels: Array.from({ length: 9 }, (_, i) => ({
-      photo: i % 2, zoom: 1, ox: 0, oy: 0,
+      photo: i % 3, zoom: 1, ox: 0, oy: 0,
     })),
   };
 }
@@ -77,7 +80,18 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
-/** Build the layout / grade / size picker buttons from cover.js tables. */
+/** Apply a Look: layout + grade + title treatment, set together in one click. */
+function applyLook(key) {
+  const look = LOOKS[key];
+  if (!look) return;
+  state.look = key;
+  state.layout = look.layout;
+  state.grade = look.grade;
+  state.stacked = look.stacked;
+  state.tracking = look.tracking;
+}
+
+/** Build the layout / grade / size / look picker buttons from cover.js tables. */
 function buildPickers() {
   const mk = (holder, entries, current, onPick) => {
     const box = $(holder);
@@ -92,12 +106,14 @@ function buildPickers() {
       box.appendChild(b);
     }
   };
+  mk('looks', LOOKS, state.look, applyLook);
   mk('layouts', LAYOUTS, state.layout, (k) => { state.layout = k; });
   mk('grades', GRADES, state.grade, (k) => { state.grade = k; });
   mk('sizes', SIZES, state.size, (k) => { state.size = k; });
 }
 
 function syncControls() {
+  document.querySelectorAll('#looks .pick').forEach((b) => b.classList.toggle('active', b.dataset.key === state.look));
   document.querySelectorAll('#layouts .pick').forEach((b) => b.classList.toggle('active', b.dataset.key === state.layout));
   document.querySelectorAll('#grades .pick').forEach((b) => b.classList.toggle('active', b.dataset.key === state.grade));
   document.querySelectorAll('#sizes .pick').forEach((b) => b.classList.toggle('active', b.dataset.key === state.size));
@@ -105,6 +121,9 @@ function syncControls() {
   $('subtitle').value = state.subtitle;
   $('badge').value = state.badge;
   $('heat').value = String(state.heat);
+  $('stacked').checked = !!state.stacked;
+  $('tracking').value = String(state.tracking ?? 2);
+  $('trackingVal').textContent = `${state.tracking ?? 2}px`;
   $('grain').checked = state.grain;
   $('vignette').checked = state.vignette;
   $('halftone').checked = state.halftone;
@@ -168,8 +187,8 @@ $('photo').addEventListener('change', async (e) => {
 });
 $('useSamples').addEventListener('click', async () => {
   pushUndo();
-  await app.loadSamples(['boulevard', 'pier']);
-  state.panels.forEach((p, i) => { p.photo = i % 2; });
+  await app.loadSamples(['boulevard', 'pier', 'palms']);
+  state.panels.forEach((p, i) => { p.photo = i % 3; });
   syncControls();
   redraw();
   setStatus('Sample photos loaded.');
@@ -178,6 +197,13 @@ $('title').addEventListener('input', (e) => { state.title = e.target.value; redr
 $('subtitle').addEventListener('input', (e) => { state.subtitle = e.target.value; redraw(); });
 $('badge').addEventListener('input', (e) => { state.badge = e.target.value; redraw(); });
 $('heat').addEventListener('input', (e) => { state.heat = Number(e.target.value); redraw(); });
+$('stacked').addEventListener('change', (e) => { pushUndo(); state.stacked = e.target.checked; redraw(); });
+$('tracking').addEventListener('input', (e) => {
+  state.tracking = Number(e.target.value);
+  $('trackingVal').textContent = `${state.tracking}px`;
+  redraw();
+});
+$('tracking').addEventListener('change', pushUndo);
 $('grain').addEventListener('change', (e) => { pushUndo(); state.grain = e.target.checked; redraw(); });
 $('vignette').addEventListener('change', (e) => { pushUndo(); state.vignette = e.target.checked; redraw(); });
 $('halftone').addEventListener('change', (e) => { pushUndo(); state.halftone = e.target.checked; redraw(); });
@@ -262,7 +288,7 @@ if (shot) {
   // Load the samples so the first paint already looks like a cover.
   document.fonts.load('16px Anton').catch(() => {});
   document.fonts.load('16px Pacifico').catch(() => {});
-  app.loadSamples(['boulevard', 'pier']).then(() => {
+  app.loadSamples(['boulevard', 'pier', 'palms']).then(() => {
     document.fonts.ready.then(() => redraw());
     redraw();
   });
