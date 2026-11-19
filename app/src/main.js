@@ -1,434 +1,419 @@
-// Vice City Cover Studio — editor (v4 rewrite).
-// Wires the controls in index.html to the poster renderer: photo uploads
-// and samples, one-click Looks, layout and grade pickers, caption fields,
-// per-panel pan/zoom, undo/redo, live preview and PNG export. The shot
-// runner (shots.js) drives this same state through window.__coverStudio.
+// Vice City Cover Studio — editor (v5).
+// Owns the atelier state, the controls, drag-to-pan, undo/redo and PNG export.
+// The render engine lives in cover.js; this file only drives it.
 
-import {
-  PALETTES, PRESETS, ARRANGEMENTS,
-  freshDesign, slotsForArrangement, arrangementBoxes, hitPanel, renderPoster,
-} from './cover.js';
+import { TONES, COMPOSITIONS, SIGNATURES, paintCover, framesFor, defaultDesign } from './cover.js';
 
-const el = (id) => document.getElementById(id);
-
-const SAMPLE_NAMES = ['boulevard', 'pier', 'palms'];
-const OUT_SIZES = [
-  { label: '1080 × 1080', size: [1080, 1080] },
-  { label: '1080 × 1350', size: [1080, 1350] },
-  { label: '1920 × 1080', size: [1920, 1080] },
+const $ = (id) => document.getElementById(id);
+const STOCK = [
+  { name: 'boulevard', src: 'samples/boulevard.jpg' },
+  { name: 'pier', src: 'samples/pier.jpg' },
+  { name: 'palms', src: 'samples/palms.jpg' },
+];
+const EXPORT_SIZES = [
+  { label: '1080 × 1080', w: 1080, h: 1080 },
+  { label: '1080 × 1350', w: 1080, h: 1350 },
+  { label: '1920 × 1080', w: 1920, h: 1080 },
 ];
 
-// The working state: the design fields cover.js renders, plus the editor's
-// own bits (export size and which panel is selected).
-const studio = {
-  ...freshDesign(),
-  outSize: OUT_SIZES[0].size,
-  activePanel: 0,
-};
+const atelier = defaultDesign();
+const picCache = new Map();
+let undoStack = [];
+let redoStack = [];
+let dragging = null;
 
-let past = [];
-let future = [];
-
-// --- pictures ---------------------------------------------------------------
-
-function loadPicture(src) {
+function loadPicture(desc) {
+  if (picCache.has(desc.src)) return Promise.resolve(picCache.get(desc.src));
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
+    img.onload = () => {
+      const pic = { name: desc.name, src: desc.src, img };
+      picCache.set(desc.src, pic);
+      resolve(pic);
+    };
+    img.onerror = () => reject(new Error(`cannot load ${desc.src}`));
+    img.src = desc.src;
   });
 }
 
-async function registerPhoto(desc) {
-  const image = await loadPicture(desc.src);
-  const photo = {
-    label: desc.name,
-    src: desc.src,
-    image,
-    panX: desc.panX ?? 0.5,
-    panY: desc.panY ?? 0.5,
-    scale: desc.scale ?? 1,
-  };
-  studio.photos.push(photo);
-  return photo;
+function frameFor(photoIdx) {
+  return { photo: photoIdx, fx: 0.5, fy: photoIdx === 0 ? 0.38 : 0.5, zoom: 1, panX: 0, panY: 0 };
 }
 
-async function fetchSamples() {
-  studio.photos = [];
-  for (const name of SAMPLE_NAMES) {
-    try { await registerPhoto({ name, src: `samples/${name}.jpg` }); } catch { /* a missing sample skips */ }
+function syncFrames() {
+  const { panels } = framesFor(atelier.composition, ...atelier.size);
+  const next = panels.map((p, i) => {
+    const old = atelier.frames[i];
+    if (old && typeof old.photo === 'number' && old.photo < atelier.pictures.length) {
+      return { ...old };
+    }
+    const def = p.photo === null || p.photo === undefined ? 0 : p.photo;
+    return frameFor(Math.min(def, Math.max(0, atelier.pictures.length - 1)));
+  });
+  atelier.frames = next;
+  if (atelier.active >= next.length) atelier.active = 0;
+}
+
+async function loadStock() {
+  atelier.pictures = [];
+  for (const desc of STOCK) {
+    try {
+      atelier.pictures.push(await loadPicture(desc));
+    } catch {
+      // A missing sample just skips; the app still works with uploads.
+    }
   }
-  studio.slots = slotsForArrangement(studio.arrangement);
+  syncFrames();
 }
 
-// --- design snapshot + history ----------------------------------------------
-
-function designSnapshot() {
-  return {
-    preset: studio.preset,
-    arrangement: studio.arrangement,
-    palette: studio.palette,
-    heading: studio.heading,
-    tagline: studio.tagline,
-    ribbon: studio.ribbon,
-    heat: studio.heat,
-    stackedTitle: studio.stackedTitle,
-    spacing: studio.spacing,
-    grain: studio.grain,
-    vignette: studio.vignette,
-    photos: studio.photos,
-    slots: [...studio.slots],
-  };
-}
-
-function snapshotJSON() {
+function snapshotDesign() {
   return JSON.stringify({
-    preset: studio.preset, arrangement: studio.arrangement, palette: studio.palette,
-    heading: studio.heading, tagline: studio.tagline, ribbon: studio.ribbon,
-    heat: studio.heat, stackedTitle: studio.stackedTitle, spacing: studio.spacing,
-    grain: studio.grain, vignette: studio.vignette,
-    outSize: studio.outSize, activePanel: studio.activePanel, slots: studio.slots,
-    photos: studio.photos.map((p) => ({ name: p.label, src: p.src, panX: p.panX, panY: p.panY, scale: p.scale })),
+    signature: atelier.signature, composition: atelier.composition, tone: atelier.tone,
+    headline: atelier.headline, caption: atelier.caption, sticker: atelier.sticker,
+    stars: atelier.stars, stacked: atelier.stacked, tracking: atelier.tracking,
+    grain: atelier.grain, vignette: atelier.vignette, size: atelier.size, active: atelier.active,
+    frames: atelier.frames,
+    pictures: atelier.pictures.map((p) => ({ name: p.name, src: p.src })),
   });
 }
 
-function remember() {
-  past.push(snapshotJSON());
-  if (past.length > 60) past.shift();
-  future = [];
-  refreshUndoState();
-}
-
-async function recall(serialized) {
+async function restoreDesign(serialized) {
   const d = JSON.parse(serialized);
-  Object.assign(studio, {
-    preset: d.preset, arrangement: d.arrangement, palette: d.palette,
-    heading: d.heading, tagline: d.tagline, ribbon: d.ribbon,
-    heat: d.heat, stackedTitle: d.stackedTitle, spacing: d.spacing,
-    grain: d.grain, vignette: d.vignette,
-    outSize: d.outSize, activePanel: d.activePanel, slots: d.slots,
+  Object.assign(atelier, {
+    signature: d.signature, composition: d.composition, tone: d.tone,
+    headline: d.headline, caption: d.caption, sticker: d.sticker, stars: d.stars,
+    stacked: d.stacked, tracking: d.tracking, grain: d.grain, vignette: d.vignette,
+    size: d.size, active: d.active, frames: d.frames,
   });
-  studio.photos = [];
-  for (const desc of d.photos) {
-    try { await registerPhoto(desc); } catch { /* skip unloadable */ }
+  atelier.pictures = [];
+  for (const desc of d.pictures) {
+    try {
+      atelier.pictures.push(await loadPicture(desc));
+    } catch {
+      // Skip unloadable pictures; frames pointing at them fall back in render.
+    }
   }
-  refreshUI();
-  draw();
+  syncPanel();
+  render();
 }
 
-function refreshUndoState() {
-  el('undoBtn').disabled = past.length === 0;
-  el('redoBtn').disabled = future.length === 0;
+function checkpoint() {
+  undoStack.push(snapshotDesign());
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack = [];
+  syncUndoButtons();
 }
 
-// --- painting ---------------------------------------------------------------
+function syncUndoButtons() {
+  $('undoBtn').disabled = undoStack.length === 0;
+  $('redoBtn').disabled = redoStack.length === 0;
+}
 
-function draw() {
-  const canvas = el('cover');
-  const [w, h] = studio.outSize;
+function render() {
+  const canvas = $('poster');
+  const [w, h] = atelier.size;
   canvas.width = w;
   canvas.height = h;
-  renderPoster(canvas.getContext('2d'), designSnapshot(), w, h);
-  // Selection outline: preview only, never in exports.
-  const boxes = arrangementBoxes(studio.arrangement, w, h);
-  const box = boxes[studio.activePanel];
-  if (box) {
-    const ctx = canvas.getContext('2d');
-    ctx.save();
-    ctx.setLineDash([10, 6]);
-    ctx.strokeStyle = '#ffd76a';
-    ctx.lineWidth = Math.max(2, w * 0.002);
-    ctx.beginPath();
-    box.corners.forEach(([x, y], j) => (j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
+  const ctx = canvas.getContext('2d');
+  paintCover(atelier, ctx, w, h);
+}
+
+function chip(container, label, active, onPick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = `chip${active ? ' on' : ''}`;
+  b.textContent = label;
+  b.addEventListener('click', onPick);
+  container.appendChild(b);
+  return b;
+}
+
+function buildChips() {
+  const lookRow = $('lookRow');
+  lookRow.innerHTML = '';
+  for (const [id, look] of Object.entries(SIGNATURES)) {
+    chip(lookRow, look.name, atelier.signature === id, () => applySignature(id));
+  }
+  const layoutRow = $('layoutRow');
+  layoutRow.innerHTML = '';
+  for (const [id, comp] of Object.entries(COMPOSITIONS)) {
+    chip(layoutRow, comp.name, atelier.composition === id, () => {
+      checkpoint();
+      atelier.composition = id;
+      atelier.signature = '';
+      syncFrames();
+      syncPanel();
+      render();
+    });
+  }
+  const gradeRow = $('gradeRow');
+  gradeRow.innerHTML = '';
+  for (const [id, tone] of Object.entries(TONES)) {
+    chip(gradeRow, tone.name, atelier.tone === id, () => {
+      checkpoint();
+      atelier.tone = id;
+      atelier.signature = '';
+      syncPanel();
+      render();
+    });
   }
 }
 
-function activePhoto() {
-  const slot = studio.slots[studio.activePanel];
-  return slot != null && slot >= 0 ? studio.photos[slot] : null;
+function applySignature(id) {
+  const look = SIGNATURES[id];
+  if (!look) return;
+  checkpoint();
+  atelier.signature = id;
+  atelier.composition = look.composition;
+  atelier.tone = look.tone;
+  atelier.stacked = look.stacked;
+  atelier.tracking = look.tracking;
+  syncFrames();
+  syncPanel();
+  render();
 }
 
-// --- controls ---------------------------------------------------------------
-
-function buildChips(container, items, current, onPick) {
-  container.innerHTML = '';
-  items.forEach((item) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'pick' + ((item.value ?? item) === current ? ' active' : '');
-    b.textContent = item.label ?? item;
-    b.addEventListener('click', () => onPick(item.value ?? item));
-    container.appendChild(b);
+function syncPanel() {
+  buildChips();
+  $('headline').value = atelier.headline;
+  $('caption').value = atelier.caption;
+  $('sticker').value = atelier.sticker;
+  $('stars').value = String(atelier.stars);
+  $('stacked').checked = atelier.stacked;
+  $('tracking').value = String(atelier.tracking);
+  $('grain').checked = atelier.grain > 0;
+  $('vignette').checked = atelier.vignette;
+  const zoom = $('zoom');
+  const frame = atelier.frames[atelier.active];
+  zoom.value = String(frame ? frame.zoom : 1);
+  $('zoomVal').textContent = `${frame ? frame.zoom.toFixed(2) : '1.00'}×`;
+  const picker = $('panelPhoto');
+  picker.innerHTML = '';
+  atelier.pictures.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = p.name;
+    picker.appendChild(opt);
+  });
+  if (frame) picker.value = String(frame.photo);
+  document.querySelectorAll('#sizeRow .chip').forEach((b) => {
+    const [w, h] = b.dataset.size.split('x').map(Number);
+    b.classList.toggle('on', w === atelier.size[0] && h === atelier.size[1]);
   });
 }
 
-function refreshPanelChoices() {
-  const box = el('panelPhotos');
-  box.innerHTML = '';
-  studio.photos.forEach((photo, i) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'pick' + (studio.slots[studio.activePanel] === i ? ' active' : '');
-    b.textContent = photo.label;
-    b.addEventListener('click', () => {
-      remember();
-      studio.slots[studio.activePanel] = i;
-      refreshUI();
-      draw();
-    });
-    box.appendChild(b);
-  });
-  const photo = activePhoto();
-  el('zoomInput').value = photo ? Math.round(photo.scale * 100) : 100;
-  el('zoomVal').textContent = `${el('zoomInput').value}%`;
+function panelAt(mx, my) {
+  const canvas = $('poster');
+  const rect = canvas.getBoundingClientRect();
+  const x = (mx - rect.left) * (canvas.width / rect.width);
+  const y = (my - rect.top) * (canvas.height / rect.height);
+  const { panels } = framesFor(atelier.composition, canvas.width, canvas.height);
+  for (let i = panels.length - 1; i >= 0; i -= 1) {
+    const p = panels[i];
+    if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) return i;
+  }
+  return -1;
 }
 
-function refreshUI() {
-  const boxes = arrangementBoxes(studio.arrangement, studio.outSize[0], studio.outSize[1]);
-  if (studio.activePanel >= boxes.length) studio.activePanel = 0;
-  buildChips(el('lookRow'), Object.entries(PRESETS).map(([value, p]) => ({ value, label: p.label })), studio.preset, (v) => {
-    remember();
-    usePreset(v);
-    refreshUI();
-    draw();
-  });
-  buildChips(el('layoutRow'), ARRANGEMENTS.map((a) => ({ value: a, label: a })), studio.arrangement, (v) => {
-    remember();
-    studio.arrangement = v;
-    studio.slots = slotsForArrangement(v);
-    studio.activePanel = 0;
-    refreshUI();
-    draw();
-  });
-  buildChips(el('gradeRow'), Object.keys(PALETTES).map((g) => ({ value: g, label: g })), studio.palette, (v) => {
-    remember();
-    studio.palette = v;
-    refreshUI();
-    draw();
-  });
-  buildChips(el('sizeRow'), OUT_SIZES.map((o) => ({ value: o.size, label: o.label })), studio.outSize, (v) => {
-    remember();
-    studio.outSize = v;
-    refreshUI();
-    draw();
-  });
-  el('titleInput').value = studio.heading;
-  el('subtitleInput').value = studio.tagline;
-  el('badgeInput').value = studio.ribbon;
-  el('starsInput').value = studio.heat;
-  el('starsVal').textContent = `${studio.heat} ★`;
-  el('stackedInput').checked = studio.stackedTitle;
-  el('trackingInput').value = studio.spacing;
-  el('trackingVal').textContent = `${studio.spacing}px`;
-  el('grainInput').checked = studio.grain;
-  el('vignetteInput').checked = studio.vignette;
-  refreshPanelChoices();
-  refreshUndoState();
-}
-
-function usePreset(name) {
-  const p = PRESETS[name];
-  if (!p) return;
-  studio.preset = name;
-  studio.arrangement = p.arrangement;
-  studio.palette = p.palette;
-  studio.stackedTitle = p.stackedTitle;
-  studio.spacing = p.spacing;
-  studio.slots = slotsForArrangement(p.arrangement);
-  studio.activePanel = 0;
-}
-
-// --- pointer: click to select, drag to pan ---------------------------------
-
-function spareRoom(photo, w, h) {
-  const img = photo.image;
-  const fit = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-  const scale = fit * (photo.scale || 1);
-  return [Math.max(0, img.naturalWidth * scale - w), Math.max(0, img.naturalHeight * scale - h)];
-}
-
-function wireCanvas() {
-  const canvas = el('cover');
-  let drag = null;
-  canvas.addEventListener('pointerdown', (ev) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = ((ev.clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((ev.clientY - rect.top) / rect.height) * canvas.height;
-    const idx = hitPanel(x, y, canvas.width, canvas.height, designSnapshot());
+function bindCanvas() {
+  const canvas = $('poster');
+  canvas.addEventListener('pointerdown', (e) => {
+    const idx = panelAt(e.clientX, e.clientY);
     if (idx < 0) return;
-    // Snapshot before the drag so undo returns to the pre-drag state.
-    remember();
-    studio.activePanel = idx;
-    const photo = activePhoto();
-    drag = photo ? { photo, startX: ev.clientX, startY: ev.clientY, panX: photo.panX, panY: photo.panY, rect } : null;
-    refreshUI();
-    draw();
-    canvas.setPointerCapture(ev.pointerId);
+    checkpoint();
+    atelier.active = idx;
+    dragging = { x: e.clientX, y: e.clientY, idx };
+    canvas.setPointerCapture(e.pointerId);
+    syncPanel();
+    render();
   });
-  canvas.addEventListener('pointermove', (ev) => {
-    if (!drag) return;
-    const boxes = arrangementBoxes(studio.arrangement, canvas.width, canvas.height);
-    const box = boxes[studio.activePanel];
-    if (!box) return;
-    const [spareX, spareY] = spareRoom(drag.photo, box.width, box.height);
-    const dx = ((ev.clientX - drag.startX) / drag.rect.width) * canvas.width;
-    const dy = ((ev.clientY - drag.startY) / drag.rect.height) * canvas.height;
-    // Grab-and-drag: the photo follows the pointer.
-    drag.photo.panX = Math.min(1, Math.max(0, drag.panX - dx / Math.max(1, spareX)));
-    drag.photo.panY = Math.min(1, Math.max(0, drag.panY - dy / Math.max(1, spareY)));
-    draw();
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const frame = atelier.frames[dragging.idx];
+    if (!frame) return;
+    const rect = canvas.getBoundingClientRect();
+    const dx = (e.clientX - dragging.x) * (canvas.width / rect.width);
+    const dy = (e.clientY - dragging.y) * (canvas.height / rect.height);
+    const { panels } = framesFor(atelier.composition, canvas.width, canvas.height);
+    const p = panels[dragging.idx];
+    frame.panX = Math.max(-1, Math.min(1, frame.panX + (dx / Math.max(1, p.w)) * 2));
+    frame.panY = Math.max(-1, Math.min(1, frame.panY + (dy / Math.max(1, p.h)) * 2));
+    dragging.x = e.clientX;
+    dragging.y = e.clientY;
+    render();
   });
-  const endDrag = () => { drag = null; refreshUI(); draw(); };
+  const endDrag = () => { dragging = null; };
   canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', () => { drag = null; });
+  canvas.addEventListener('pointercancel', endDrag);
 }
 
-// --- export -----------------------------------------------------------------
-
-function savePNG(w, h) {
-  const off = document.createElement('canvas');
-  off.width = w;
-  off.height = h;
-  renderPoster(off.getContext('2d'), designSnapshot(), w, h);
-  off.toBlob((blob) => {
-    if (!blob) return;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `vice-city-cover-${w}x${h}.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  }, 'image/png');
-}
-
-// --- wiring -----------------------------------------------------------------
-
-function wireUI() {
-  el('useSamples').addEventListener('click', async () => {
-    remember();
-    await fetchSamples();
-    refreshUI();
-    draw();
+function exportPNG(w, h) {
+  return new Promise((resolve, reject) => {
+    const off = document.createElement('canvas');
+    off.width = w;
+    off.height = h;
+    const keep = atelier.size;
+    atelier.size = [w, h];
+    try {
+      paintCover(atelier, off.getContext('2d'), w, h);
+    } finally {
+      atelier.size = keep;
+    }
+    off.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('export produced no blob'));
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `vice-city-cover-${w}x${h}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      resolve(blob);
+    }, 'image/png');
   });
-  el('photoInput').addEventListener('change', async (ev) => {
-    const files = [...ev.target.files].slice(0, 4);
+}
+
+function buildScene(spec) {
+  if (spec.signature) applySignature(spec.signature);
+  if (spec.composition) atelier.composition = spec.composition;
+  if (spec.tone) atelier.tone = spec.tone;
+  if (spec.headline !== undefined) atelier.headline = spec.headline;
+  if (spec.caption !== undefined) atelier.caption = spec.caption;
+  if (spec.sticker !== undefined) atelier.sticker = spec.sticker;
+  if (spec.stars !== undefined) atelier.stars = spec.stars;
+  if (spec.stacked !== undefined) atelier.stacked = spec.stacked;
+  if (spec.tracking !== undefined) atelier.tracking = spec.tracking;
+  if (spec.size) atelier.size = spec.size;
+  if (spec.frames) {
+    atelier.frames = spec.frames.map((f) => ({
+      photo: f.photo, fx: f.fx ?? 0.5, fy: f.fy ?? 0.5,
+      zoom: f.zoom ?? 1, panX: f.panX ?? 0, panY: f.panY ?? 0,
+    }));
+  } else {
+    syncFrames();
+  }
+  syncPanel();
+  render();
+}
+
+function bindControls() {
+  $('upload').addEventListener('change', async (e) => {
+    const files = [...e.target.files].slice(0, 4);
     if (!files.length) return;
-    remember();
-    studio.photos = [];
-    for (const f of files) {
-      const src = await new Promise((res) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.readAsDataURL(f);
-      });
-      try { await registerPhoto({ name: f.name.replace(/\.[^.]+$/, ''), src }); } catch { /* skip */ }
+    checkpoint();
+    for (const file of files) {
+      const url = URL.createObjectURL(file);
+      try {
+        const pic = await loadPicture({ name: file.name.replace(/\.[^.]+$/, ''), src: url });
+        atelier.pictures.push(pic);
+      } catch {
+        // Skip files that fail to load.
+      }
     }
-    studio.slots = slotsForArrangement(studio.arrangement);
-    refreshUI();
-    draw();
+    syncFrames();
+    syncPanel();
+    render();
   });
-  const commit = (fn) => () => { remember(); fn(); refreshUI(); draw(); };
-  el('titleInput').addEventListener('change', commit(() => { studio.heading = el('titleInput').value; }));
-  el('subtitleInput').addEventListener('change', commit(() => { studio.tagline = el('subtitleInput').value; }));
-  el('badgeInput').addEventListener('change', commit(() => { studio.ribbon = el('badgeInput').value; }));
-  el('stackedInput').addEventListener('change', commit(() => { studio.stackedTitle = el('stackedInput').checked; }));
-  el('grainInput').addEventListener('change', commit(() => { studio.grain = el('grainInput').checked; }));
-  el('vignetteInput').addEventListener('change', commit(() => { studio.vignette = el('vignetteInput').checked; }));
-  // Sliders: snapshot on the first movement of a gesture, live-update after.
-  const wireSlider = (inputId, labelId, format, apply) => {
-    const input = el(inputId);
-    let armed = false;
-    input.addEventListener('input', () => {
-      if (!armed) { remember(); armed = true; }
-      apply(Number(input.value));
-      el(labelId).textContent = format(input.value);
-      draw();
+  $('useSamples').addEventListener('click', async () => {
+    checkpoint();
+    await loadStock();
+    syncPanel();
+    render();
+  });
+  const text = (id, key) => {
+    $(id).addEventListener('input', () => {
+      atelier[key] = $(id).value;
+      render();
     });
-    input.addEventListener('change', () => { armed = false; refreshUI(); draw(); });
+    $(id).addEventListener('change', () => checkpoint());
   };
-  wireSlider('starsInput', 'starsVal', (v) => `${v} ★`, (v) => { studio.heat = v; });
-  wireSlider('trackingInput', 'trackingVal', (v) => `${v}px`, (v) => { studio.spacing = v; });
-  wireSlider('zoomInput', 'zoomVal', (v) => `${v}%`, (v) => {
-    const photo = activePhoto();
-    if (photo) photo.scale = v / 100;
+  text('headline', 'headline');
+  text('caption', 'caption');
+  text('sticker', 'sticker');
+  $('stars').addEventListener('change', () => {
+    checkpoint();
+    atelier.stars = Number($('stars').value);
+    render();
   });
-  el('undoBtn').addEventListener('click', async () => {
-    if (!past.length) return;
-    future.push(snapshotJSON());
-    await recall(past.pop());
-    refreshUndoState();
+  $('stacked').addEventListener('change', () => {
+    checkpoint();
+    atelier.stacked = $('stacked').checked;
+    render();
   });
-  el('redoBtn').addEventListener('click', async () => {
-    if (!future.length) return;
-    past.push(snapshotJSON());
-    await recall(future.pop());
-    refreshUndoState();
+  $('tracking').addEventListener('input', () => {
+    atelier.tracking = Number($('tracking').value);
+    render();
   });
-  el('export1080').addEventListener('click', () => savePNG(1080, 1080));
-  el('export1350').addEventListener('click', () => savePNG(1080, 1350));
-  el('export1920').addEventListener('click', () => savePNG(1920, 1080));
-  wireCanvas();
-}
-
-// --- shot mode hook (used by shots.js) --------------------------------------
-
-async function applyScene(p) {
-  if (p.look && PRESETS[p.look]) usePreset(p.look);
-  if (p.layout && ARRANGEMENTS.includes(p.layout)) {
-    studio.arrangement = p.layout;
-    studio.slots = slotsForArrangement(p.layout);
+  $('tracking').addEventListener('change', () => checkpoint());
+  $('grain').addEventListener('change', () => {
+    checkpoint();
+    atelier.grain = $('grain').checked ? 0.05 : 0;
+    render();
+  });
+  $('vignette').addEventListener('change', () => {
+    checkpoint();
+    atelier.vignette = $('vignette').checked;
+    render();
+  });
+  $('zoom').addEventListener('input', () => {
+    const frame = atelier.frames[atelier.active];
+    if (!frame) return;
+    frame.zoom = Number($('zoom').value);
+    $('zoomVal').textContent = `${frame.zoom.toFixed(2)}×`;
+    render();
+  });
+  $('zoom').addEventListener('change', () => checkpoint());
+  $('panelPhoto').addEventListener('change', () => {
+    checkpoint();
+    const frame = atelier.frames[atelier.active];
+    if (frame) frame.photo = Number($('panelPhoto').value);
+    render();
+  });
+  $('undoBtn').addEventListener('click', async () => {
+    if (!undoStack.length) return;
+    redoStack.push(snapshotDesign());
+    await restoreDesign(undoStack.pop());
+    syncUndoButtons();
+  });
+  $('redoBtn').addEventListener('click', async () => {
+    if (!redoStack.length) return;
+    undoStack.push(snapshotDesign());
+    await restoreDesign(redoStack.pop());
+    syncUndoButtons();
+  });
+  const sizeRow = $('sizeRow');
+  sizeRow.innerHTML = '';
+  for (const s of EXPORT_SIZES) {
+    const b = chip(sizeRow, s.label, false, () => {
+      checkpoint();
+      atelier.size = [s.w, s.h];
+      syncPanel();
+      render();
+    });
+    b.dataset.size = `${s.w}x${s.h}`;
   }
-  if (p.grade && PALETTES[p.grade]) studio.palette = p.grade;
-  if (p.title !== undefined) studio.heading = p.title;
-  if (p.subtitle !== undefined) studio.tagline = p.subtitle;
-  if (p.badge !== undefined) studio.ribbon = p.badge;
-  if (p.stars !== undefined) studio.heat = Number(p.stars);
-  if (p.stacked !== undefined) studio.stackedTitle = p.stacked === '1' || p.stacked === 'true';
-  if (p.tracking !== undefined) studio.spacing = Number(p.tracking);
-  if (p.photos) {
-    studio.photos = [];
-    for (const raw of p.photos.split(',')) {
-      const name = raw.trim();
-      try { await registerPhoto({ name, src: `samples/${name}.jpg` }); } catch { /* skip */ }
+  $('exportBtn').addEventListener('click', async () => {
+    const [w, h] = atelier.size;
+    try {
+      await exportPNG(w, h);
+      $('hint').textContent = `Exported ${w}×${h} PNG — check your downloads.`;
+    } catch (err) {
+      $('hint').textContent = `Export failed: ${err.message}`;
     }
-    studio.slots = slotsForArrangement(studio.arrangement);
-  }
-  if (p.slots) studio.slots = p.slots.split(',').map((n) => Number(n));
-  const setPan = (i) => {
-    const photo = studio.photos[i];
-    if (!photo) return;
-    if (p[`ox${i}`] !== undefined) photo.panX = Number(p[`ox${i}`]);
-    if (p[`oy${i}`] !== undefined) photo.panY = Number(p[`oy${i}`]);
-    if (p[`zoom${i}`] !== undefined) photo.scale = Number(p[`zoom${i}`]);
+  });
+}
+
+async function boot() {
+  bindControls();
+  bindCanvas();
+  await loadStock();
+  syncPanel();
+  render();
+  window.__viceStudio = {
+    design: atelier, render, exportPNG, applySignature, buildScene,
+    ready: Promise.resolve(true),
   };
-  if (p.ox !== undefined && studio.photos[0]) studio.photos[0].panX = Number(p.ox);
-  if (p.oy !== undefined && studio.photos[0]) studio.photos[0].panY = Number(p.oy);
-  if (p.zoom !== undefined && studio.photos[0]) studio.photos[0].scale = Number(p.zoom);
-  for (let i = 1; i < 4; i++) setPan(i);
-  refreshUI();
-  draw();
 }
 
-window.__coverStudio = { studio, draw, applyScene, designSnapshot };
-
-// --- start ------------------------------------------------------------------
-
-wireUI();
-refreshUI();
-draw(); // immediate paint (backdrop + title) so the canvas is never blank
-// In shot mode the shots runner owns photo loading (it knows exactly which
-// photos the scene wants); loading the samples here too would race it and
-// scramble the photo order. Editor mode loads the samples itself.
-if (!new URLSearchParams(location.search).get('shot')) {
-  fetchSamples().then(() => { refreshUI(); draw(); });
-}
-if (document.fonts && document.fonts.ready) {
-  document.fonts.ready.then(() => draw());
-  Promise.all([
-    document.fonts.load('40px Anton'),
-    document.fonts.load('20px Pacifico'),
-  ]).then(() => draw()).catch(() => {});
-}
+boot();
