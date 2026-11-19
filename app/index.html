@@ -1,112 +1,96 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vice City Cover Studio</title>
-<link rel="stylesheet" href="./style.css">
+<title>Vice City Cover Studio — GTA-style cover maker</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="app">
-  <section class="controls">
-    <h1>Vice City Cover Studio</h1>
-    <p class="tagline">Your photos, painted into a Vice City poster. Pick a Look for a
-    one-click poster, or tune the layout and grade yourself, write the
-    caption, export the PNG.</p>
+<header class="top">
+  <h1>Vice City Cover Studio</h1>
+  <p class="tag">Your photos, painted into a Vice City poster. Pick a Look for a one-click poster, or tune the layout and grade yourself, write the caption, export the PNG.</p>
+</header>
 
-    <fieldset>
-      <legend>1 · Photos</legend>
-      <label class="file-label">Upload up to 4 photos
-        <input id="photoFile" type="file" accept="image/*" multiple>
+<main class="sheet">
+  <aside class="controls">
+    <section class="card">
+      <h2>1 · Photos</h2>
+      <label class="field">Upload up to 4 photos
+        <input id="photoInput" type="file" accept="image/*" multiple>
       </label>
-      <button id="useSamples" type="button">Use the sample photos</button>
+      <button id="useSamples" type="button" class="wide">Use the sample photos</button>
       <p class="hint">Click a panel to select it, then drag it to reposition the photo inside.</p>
-    </fieldset>
+    </section>
 
-    <fieldset>
-      <legend>2 · Looks — one click</legend>
-      <div class="pick-row" id="lookRow">
-        <button type="button" data-look="keyart">Key Art</button>
-        <button type="button" data-look="neon">Neon Night</button>
-        <button type="button" data-look="strip">Sunset Strip</button>
-      </div>
+    <section class="card">
+      <h2>2 · Looks — one click</h2>
+      <div id="lookRow" class="picks"></div>
       <p class="hint">A Look sets the layout, grade and title treatment together. Tweak anything after.</p>
-    </fieldset>
+    </section>
 
-    <fieldset>
-      <legend>3 · Layout</legend>
-      <div class="pick-row" id="layoutRow">
-        <button type="button" data-layout="slash">Slash Key Art</button>
-        <button type="button" data-layout="hero3">Hero + 3</button>
-        <button type="button" data-layout="grid4">4-Panel Grid</button>
-        <button type="button" data-layout="grid9">9-Panel Grid</button>
-        <button type="button" data-layout="bleed">Full Bleed</button>
-        <button type="button" data-layout="collage">Tilted Collage</button>
-      </div>
-    </fieldset>
+    <section class="card">
+      <h2>3 · Layout</h2>
+      <div id="layoutRow" class="picks"></div>
+    </section>
 
-    <fieldset>
-      <legend>4 · Grade</legend>
-      <div class="pick-row" id="gradeRow">
-        <button type="button" data-grade="sunset">Sunset</button>
-        <button type="button" data-grade="neon">Neon Night</button>
-        <button type="button" data-grade="pink">Vice Pink</button>
-        <button type="button" data-grade="teal">Teal Dusk</button>
-        <button type="button" data-grade="noir">Mono Noir</button>
-      </div>
-    </fieldset>
+    <section class="card">
+      <h2>4 · Grade</h2>
+      <div id="gradeRow" class="picks"></div>
+    </section>
 
-    <fieldset>
-      <legend>5 · Caption</legend>
-      <label>Title <input id="titleText" type="text" maxlength="40" value="VICE CITY"></label>
-      <label>Subtitle <input id="subtitleText" type="text" maxlength="60" value="one last sunset heist"></label>
-      <label>Badge <input id="badgeText" type="text" maxlength="20" value="VICE CITY"></label>
-      <label>Heat <span class="value" id="starLabel">4 ★</span>
-        <input id="starCount" type="range" min="0" max="5" step="1" value="4">
+    <section class="card">
+      <h2>5 · Caption</h2>
+      <label class="field">Title
+        <input id="titleInput" type="text" value="VICE CITY" maxlength="40">
       </label>
-      <label class="check"><input id="stackedBox" type="checkbox" checked> Stacked title</label>
-      <label>Letter spacing
-        <input id="trackingRange" type="range" min="0" max="8" step="1" value="2">
+      <label class="field">Subtitle
+        <input id="subtitleInput" type="text" value="one last sunset heist" maxlength="60">
       </label>
-    </fieldset>
+      <label class="field">Badge
+        <input id="badgeInput" type="text" value="VICE CITY" maxlength="20">
+      </label>
+      <label class="field">Heat <span id="starsVal" class="val">4 ★</span>
+        <input id="starsInput" type="range" min="0" max="5" step="1" value="4">
+      </label>
+      <label class="check"><input id="stackedInput" type="checkbox" checked> Stacked title</label>
+      <label class="field">Letter spacing <span id="trackingVal" class="val">2px</span>
+        <input id="trackingInput" type="range" min="0" max="8" step="1" value="2">
+      </label>
+    </section>
 
-    <fieldset>
-      <legend>6 · Selected panel</legend>
-      <label>Photo in this panel
-        <select id="panelPhoto"></select>
+    <section class="card">
+      <h2>6 · Selected panel</h2>
+      <div id="panelPhotos" class="picks"></div>
+      <label class="field">Zoom <span id="zoomVal" class="val">100%</span>
+        <input id="zoomInput" type="range" min="100" max="200" step="1" value="100">
       </label>
-      <label>Zoom <span class="value" id="zoomLabel">1.0×</span>
-        <input id="zoomRange" type="range" min="1" max="2.5" step="0.05" value="1">
-      </label>
-      <p class="hint" id="panelHint">Panel 1 selected — drag it to reposition its photo.</p>
-    </fieldset>
+    </section>
 
-    <fieldset>
-      <legend>7 · Finish</legend>
-      <label class="check"><input id="grainBox" type="checkbox" checked> Film grain</label>
-      <label class="check"><input id="vignetteBox" type="checkbox" checked> Vignette</label>
-      <div class="undo-row">
-        <button id="undoBtn" type="button" disabled>Undo</button>
-        <button id="redoBtn" type="button" disabled>Redo</button>
+    <section class="card">
+      <h2>7 · Export</h2>
+      <div id="sizeRow" class="picks"></div>
+      <div class="exports">
+        <button id="export1080" type="button" class="wide">PNG 1080 × 1080</button>
+        <button id="export1350" type="button" class="wide">PNG 1080 × 1350</button>
+        <button id="export1920" type="button" class="wide">PNG 1920 × 1080</button>
       </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>8 · Export PNG</legend>
-      <div class="export-row">
-        <button id="exportSquare" type="button">1080 × 1080</button>
-        <button id="exportPortrait" type="button">1080 × 1350</button>
-        <button id="exportWide" type="button">1920 × 1080</button>
+      <label class="check"><input id="grainInput" type="checkbox" checked> Film grain</label>
+      <label class="check"><input id="vignetteInput" type="checkbox" checked> Vignette</label>
+      <div class="undoRow">
+        <button id="undoBtn" type="button">Undo</button>
+        <button id="redoBtn" type="button">Redo</button>
       </div>
-      <p id="status" role="status"></p>
-    </fieldset>
-  </section>
+    </section>
+  </aside>
 
-  <section class="stage">
-    <canvas id="cover" width="1080" height="1080" aria-label="The cover"></canvas>
+  <section class="preview">
+    <canvas id="cover" width="1080" height="1080"></canvas>
     <p class="caption">Live preview — every change paints straight onto the cover.</p>
   </section>
 </main>
-<script type="module" src="./src/main.js"></script>
+
+<script type="module" src="src/main.js"></script>
+<script type="module" src="src/shots.js"></script>
 </body>
 </html>
